@@ -1,0 +1,17 @@
+dataset:
+  name: Nuscenes
+  type: range_images
+  args:
+    directory: ./dataset/nuscenes
+    scene_ids:
+      - XXXX
+    res_in: '8_1024'
+    res_out: '32_1024'
+    memory_fetch: false
+
+model:
+  name: lsr
+  output: ./models/trained/lsr_4h_1w_nusc
+  args:
+    scale_h: 4
+    scale_w: 1

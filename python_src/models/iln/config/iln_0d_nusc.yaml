@@ -1,0 +1,18 @@
+dataset:
+  name: Nuscenes
+  type: range_samples_from_image
+  args:
+    directory: ./dataset/nuscenes
+    scene_ids:
+      - XXXX
+    res_in: '8_1024'
+    res_out: '32_1024'
+    num_of_samples: 8192
+    memory_fetch: false
+
+model:
+  name: iln
+  output: ./models/trained/iln_0d_nusc
+  args:
+    d: 0
+    h: 8
