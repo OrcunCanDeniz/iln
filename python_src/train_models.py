@@ -44,7 +44,8 @@ def print_log(epoch, loss_sum, loss_avg, directory=None):
 
 
 def save_check_point(epoch, period=10):
-    if epoch % period == period-1:
+    suffix = 'latest'
+    for i in range(2):
         check_point_model_info = {'name': config['model']['name'],
                                   'args': config['model']['args'],
                                   'state_dict': model.state_dict() if n_gpus <= 1 else model.module.state_dict()}
@@ -54,9 +55,13 @@ def save_check_point(epoch, period=10):
                        'lr_scheduler': lr_scheduler.state_dict(),
                        'lidar_in': train_dataset.lidar_in}
 
-        check_point_filename = os.path.join(model_directory, model_name + '_' + str(epoch + 1) + '.pth')
+        check_point_filename = os.path.join(model_directory, model_name + '_' + suffix + '.pth')
         torch.save(check_point, check_point_filename)
-
+        # do a checkpoint without overwrite
+        if epoch % period == period-1:
+            suffix = str(epoch + 1)
+        else:
+            break
     return
 
 
