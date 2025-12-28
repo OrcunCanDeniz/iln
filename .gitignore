@@ -6,5 +6,5 @@ cmake-build-debug
 *.zip
 build
 **/__pycache__/**
-./dataset/
+dataset/nuscenes
 models/trained/
