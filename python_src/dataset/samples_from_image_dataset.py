@@ -6,11 +6,12 @@ import os
 
 from dataset.dataset_utils import register_dataset, normalization_queries
 from dataset.range_images_dataset import RangeImagesDataset
+from dataset.nusc_range_img_utils import ELEV_DEG_PER_RING_NUCSENES_RAD
 
 
 @register_dataset('range_samples_from_image')
 class SamplesFromImageDataset(RangeImagesDataset):
-    def __init__(self, directory, scene_ids, res_in, res_out, num_of_samples=0, memory_fetch=True):
+    def __init__(self, directory, scene_ids, res_in, res_out, num_of_samples=0, memory_fetch=True, nusc=False):
         """
         Constructor of dataset class (pair: input range image & output range samples)
 
@@ -21,14 +22,20 @@ class SamplesFromImageDataset(RangeImagesDataset):
         :param num_of_samples: the number of samples used for training/testing (0: the use of all the samples)
         :param memory_fetch: on/off for fetching all the data into memory storage
         """
-        super(SamplesFromImageDataset, self).__init__(directory, scene_ids, res_in, res_out, memory_fetch)
-
+        super(SamplesFromImageDataset, self).__init__(directory, scene_ids, res_in, res_out, memory_fetch, nusc)
+        self.nusc = nusc
         # Dataset configurations
         self.num_of_samples = num_of_samples
 
         # Pre-compute the query laser directions of output range samples
-        v_dir = np.linspace(start=self.lidar_out['min_v'], stop=self.lidar_out['max_v'], num=self.lidar_out['channels'])
-        h_dir = np.linspace(start=self.lidar_out['min_h'], stop=self.lidar_out['max_h'], num=self.lidar_out['points_per_ring'], endpoint=False)
+        if nusc:
+            W = self.lidar_out['points_per_ring']
+            v_dir = np.copy(ELEV_DEG_PER_RING_NUCSENES_RAD)
+            cc = np.arange(W)
+            h_dir = ((cc.astype(np.float32) + 0.5) / W) * (2*np.pi) - np.pi
+        else:
+            v_dir = np.linspace(start=self.lidar_out['min_v'], stop=self.lidar_out['max_v'], num=self.lidar_out['channels'])
+            h_dir = np.linspace(start=self.lidar_out['min_h'], stop=self.lidar_out['max_h'], num=self.lidar_out['points_per_ring'], endpoint=False)
 
         v_angles = []
         h_angles = []
@@ -38,15 +45,18 @@ class SamplesFromImageDataset(RangeImagesDataset):
             h_angles = np.append(h_angles, h_dir)
 
         self.queries = np.stack((v_angles, h_angles), axis=-1).astype(np.float32)
-        self.queries = normalization_queries(self.queries, self.lidar_in)
-
-    def __len__(self):
-        """
-        Get the number of range image pairs (dataset size)
-
-        :return dataset size
-        """
-        return len(self.output_range_image_filenames)
+        if nusc:
+            v_range = ELEV_DEG_PER_RING_NUCSENES_RAD.max() - ELEV_DEG_PER_RING_NUCSENES_RAD.min()
+            # 0-1 norm for elev angles
+            self.queries[:, 0] = (self.queries[:, 0] - ELEV_DEG_PER_RING_NUCSENES_RAD.min()) / v_range
+            # -pi, pi to 0-1 mapping for azimuth
+            self.queries[:, 1] += np.pi
+            self.queries[:, 1] /= (2.0 * np.pi)
+            # move both ranges to -1,1
+            self.queries *= 2.0
+            self.queries -= 1.0
+        else:
+            self.queries = normalization_queries(self.queries, self.lidar_in)
 
     def __getitem__(self, item):
         """

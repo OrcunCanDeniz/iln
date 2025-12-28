@@ -2,14 +2,14 @@ import torch
 from torch.utils.data import Dataset
 
 import numpy as np
-import os
+import os, pdb
 
 from dataset.dataset_utils import register_dataset, read_range_image_binary, initialize_lidar
-
+from dataset.nusc_range_img_utils import npy_loader
 
 @register_dataset('range_images')
 class RangeImagesDataset(Dataset):
-    def __init__(self, directory, scene_ids, res_in, res_out, memory_fetch=True):
+    def __init__(self, directory, scene_ids, res_in, res_out, memory_fetch=True, nusc=False):
         """
         Constructor of dataset class (pair: input range image & output range image).
 
@@ -20,7 +20,7 @@ class RangeImagesDataset(Dataset):
         :param memory_fetch: on/off for fetching all the data into memory storage
         """
         super(RangeImagesDataset, self).__init__()
-
+        self.nusc = nusc
         # Dataset configurations
         self.dataset_directory = directory
         self.scene_ids = scene_ids
@@ -30,6 +30,8 @@ class RangeImagesDataset(Dataset):
 
         # Read the LiDAR configurations
         lidar_config_filename = os.path.join(directory, 'lidar_specification.yaml')
+        lidar_config_filename = './dataset/nuscenes/lidar_specification.yaml' if nusc else lidar_config_filename
+
         self.lidar_in = initialize_lidar(lidar_config_filename, channels=int(res_in.split('_')[0]), points_per_ring=int(res_in.split('_')[1]))
         self.lidar_out = initialize_lidar(lidar_config_filename, channels=int(res_out.split('_')[0]), points_per_ring=int(res_out.split('_')[1]))
 
@@ -37,19 +39,25 @@ class RangeImagesDataset(Dataset):
         self.input_range_image_filenames = []
         self.output_range_image_filenames = []
 
-        for scene_id in scene_ids:
-            input_directory = os.path.join(directory, scene_id, res_in)
-            input_filenames = [os.path.join(input_directory, f) for f in os.listdir(input_directory) if f.endswith('.rimg')]
+        if not nusc:
+            for scene_id in scene_ids:
+                input_directory = os.path.join(directory, scene_id, res_in)
+                input_filenames = [os.path.join(input_directory, f) for f in os.listdir(input_directory) if f.endswith('.rimg')]
+                input_filenames.sort()
+
+                output_directory = os.path.join(directory, scene_id, res_out)
+                output_filenames = [os.path.join(output_directory, f) for f in os.listdir(output_directory) if f.endswith('.rimg')]
+                output_filenames.sort()
+
+                assert (len(input_filenames) == len(output_filenames))
+
+                self.input_range_image_filenames.extend(input_filenames)
+                self.output_range_image_filenames.extend(output_filenames)
+        else:
+            input_filenames = [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.npy')]
             input_filenames.sort()
-
-            output_directory = os.path.join(directory, scene_id, res_out)
-            output_filenames = [os.path.join(output_directory, f) for f in os.listdir(output_directory) if f.endswith('.rimg')]
-            output_filenames.sort()
-
-            assert (len(input_filenames) == len(output_filenames))
-
             self.input_range_image_filenames.extend(input_filenames)
-            self.output_range_image_filenames.extend(output_filenames)
+            self.low_res_index = range(0, 32, 4)
 
         # Fetch all the data pairs into the memory storage
         # NOTE: This can provide fast training/testing despite requiring a large memory size
@@ -58,9 +66,16 @@ class RangeImagesDataset(Dataset):
             self.range_image_pairs = np.zeros((len(self.input_range_image_filenames), num_of_data_per_pair), dtype=np.float32)
             self.pair_split_idx = self.lidar_in['channels'] * self.lidar_in['points_per_ring']
 
-            for idx, filenames in enumerate(zip(self.input_range_image_filenames, self.output_range_image_filenames)):
-                self.range_image_pairs[idx, :self.pair_split_idx] = read_range_image_binary(filenames[0]).flatten()
-                self.range_image_pairs[idx, self.pair_split_idx:] = read_range_image_binary(filenames[1]).flatten()
+            if not nusc:
+                for idx, filenames in enumerate(zip(self.input_range_image_filenames, self.output_range_image_filenames)):
+                    self.range_image_pairs[idx, :self.pair_split_idx] = read_range_image_binary(filenames[0]).flatten()
+                    self.range_image_pairs[idx, self.pair_split_idx:] = read_range_image_binary(filenames[1]).flatten()
+            else:
+                for idx, filename in enumerate(self.input_range_image_filenames):
+                    out_img = npy_loader(filename)
+                    in_img = out_img[self.low_res_index, :]
+                    self.range_image_pairs[idx, :self.pair_split_idx] = in_img.flatten()
+                    self.range_image_pairs[idx, self.pair_split_idx:] = out_img.flatten()
 
             # Crop the values out of the detection range
             self.range_image_pairs[self.range_image_pairs < 10e-10] = self.lidar_out['norm_r']
@@ -77,7 +92,10 @@ class RangeImagesDataset(Dataset):
 
         :return dataset size
         """
-        return len(self.output_range_image_filenames)
+        if not self.nusc:
+            return len(self.output_range_image_filenames)
+        else:
+            return len(self.input_range_image_filenames)
 
     def __getitem__(self, item):
         """
@@ -94,9 +112,13 @@ class RangeImagesDataset(Dataset):
         else:
             # Read the pair of input and output range images
             input_range_image_filename = self.input_range_image_filenames[item]
-            output_range_image_filename = self.output_range_image_filenames[item]
-            input_range_image = read_range_image_binary(input_range_image_filename)
-            output_range_image = read_range_image_binary(output_range_image_filename)
+            if not self.nusc:
+                output_range_image_filename = self.output_range_image_filenames[item]
+                input_range_image = read_range_image_binary(input_range_image_filename)
+                output_range_image = read_range_image_binary(output_range_image_filename)
+            else: 
+                output_range_image = npy_loader(input_range_image_filename)
+                input_range_image = output_range_image[self.low_res_index, :]
 
             # Crop the values out of the detection range
             input_range_image[input_range_image < 10e-10] = self.lidar_in['norm_r']

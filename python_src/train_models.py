@@ -1,6 +1,6 @@
 import argparse
 import yaml
-import os
+import os, pdb
 
 import torch
 import torch.nn as nn
@@ -154,6 +154,16 @@ if __name__ == '__main__':
 
     # Train settings
     batch_size = args.batch
+    if config['dataset']['name'].lower() == 'nuscenes':
+        tmp_dir = os.environ.get("TMPDIR")
+        use_work_dir = os.environ.get("USE_WORK", "0")
+        if tmp_dir is not None and use_work_dir != "1":
+            config['dataset']['args']['directory'] = os.path.join(tmp_dir, "nusc_dataset")
+        config['dataset']['args']['directory'] += '/train_rv'
+        config['dataset']['args']['nusc'] = True
+
+        print("Nuscenes root directory:", config['dataset']['args']['directory'])
+
     train_dataset = generate_dataset(config['dataset'])
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=8)
 
@@ -184,6 +194,8 @@ if __name__ == '__main__':
     print("=================== Training Configuration ====================  ")
     model_name = config['model']['name']
     model_directory = config['model']['output']
+    # Ensure the model output directory exists (create recursively; no error if it already exists)
+    os.makedirs(model_directory, exist_ok=True)
     print('  Model:', model_name, '(' + str(sum(p.numel() for p in model.parameters() if p.requires_grad)) + ' parameters)')
     for key, value in config['model']['args'].items():
         print('    ' + key + ':', value)

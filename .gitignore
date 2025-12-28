@@ -5,3 +5,6 @@ python_src/.idea
 cmake-build-debug
 *.zip
 build
+**/__pycache__/**
+./dataset/
+models/trained/

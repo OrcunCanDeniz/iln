@@ -1,0 +1,19 @@
+dataset:
+  name: Nuscenes
+  type: range_samples_from_image
+  args:
+    directory: ./dataset/nuscenes
+    scene_ids:
+      - DOESNTMATTER
+    res_in: '8_1024'
+    res_out: '32_1024'
+    num_of_samples: 8192
+    memory_fetch: false
+
+model:
+  name: liif_lidar
+  output: ./models/trained/liif
+  args:
+    local_ensemble: true
+    feat_unfold: false
+    cell_decode: false
