@@ -90,7 +90,7 @@ def train_implicit_network():
 
         # Logging
         print_log(epoch, loss_sum, loss_sum / len(train_loader), directory=model_directory)
-        save_check_point(epoch, period=10)
+        save_check_point(epoch, period=100)
 
     return
 
@@ -123,7 +123,7 @@ def train_pixel_based_network():
 
         # Logging
         print_log(epoch, loss_sum, loss_sum / len(train_loader), directory=model_directory)
-        save_check_point(epoch, period=10)
+        save_check_point(epoch, period=100)
 
     return
 
