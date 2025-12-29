@@ -23,7 +23,9 @@ NODE_LOCAL_ARTEFACTS_DIR="${TMPDIR}/${PROJECT}_outputs/${SLURM_JOB_ID}"
 SLURM_LOGS_DIR="${TMPDIR}/logs"
 
 cp $WORK/data/nuscenes/cmtulip_bevformer_train.tar $TMPDIR/
+echo "Copied dataset tar file"
 mkdir -p $TMPDIR/nusc_dataset && tar -xf $TMPDIR/cmtulip_bevformer_train.tar -C $TMPDIR/nusc_dataset
+echo "Extracted tar"
 
 # Go to your code root
 cd "${CODE_DIR}"
@@ -67,5 +69,5 @@ apptainer exec --nv \
     source /opt/conda/etc/profile.d/conda.sh &&
     conda activate py38 &&
     cd "$CODE_DIR" &&
-    python3 python_src/train_models.py -c python_src/models/liif_cvpr21/config/liif_lidar_nusc.yaml
+    torchrun --nproc_per_node="${SLURM_GPUS_ON_NODE}" python_src/train_models.py -c python_src/models/liif_cvpr21/config/liif_lidar_nusc.yaml
     '
