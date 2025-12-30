@@ -148,17 +148,23 @@ if __name__ == '__main__':
         RANK = dist.get_rank()
         torch.cuda.set_device(local_rank)
         device = torch.device("cuda", local_rank)
+        gpu_count = dist.get_world_size()
     else:
         # Fallback for single GPU/CPU debugging
         print("Warning: Not running via torchrun. Defaulting to single device.")
         local_rank = 0
         RANK = 0
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        gpu_count = 1
     # --------------------------
 
     with open(args.config, 'r') as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
-
+        
+    bbs = 16 * 2 # batch size 16 for 2 gpus is base
+    lr_scaler = (args.batch * gpu_count) / bbs
+    print(f"LR Scaler: {lr_scaler} (Batch Size per GPU: {args.batch}, World Size: {gpu_count})")
+    
     # Dataset Config
     batch_size = args.batch
     if config['dataset']['name'].lower() == 'nuscenes':
@@ -217,7 +223,7 @@ if __name__ == '__main__':
         model = DDP(model, device_ids=[local_rank], output_device=local_rank)
 
     # 4. Initialize Optimizer & Scheduler
-    optimizer = optim.Adam(params=list(model.parameters()), lr=1e-4)
+    optimizer = optim.Adam(params=list(model.parameters()), lr=1e-4*lr_scaler)
     lr_scheduler = MultiStepLR(optimizer, milestones=[200, 400, 600, 800], gamma=0.5)
     criterion = nn.L1Loss().to(device)
 
