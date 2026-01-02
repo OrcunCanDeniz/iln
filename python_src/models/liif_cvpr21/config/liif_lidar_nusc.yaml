@@ -7,7 +7,7 @@ dataset:
       - DOESNTMATTER
     res_in: '8_1024'
     res_out: '32_1024'
-    num_of_samples: 8192
+    num_of_samples: 32768
     memory_fetch: false
 
 model:
