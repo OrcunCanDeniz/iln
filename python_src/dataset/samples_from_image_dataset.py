@@ -29,10 +29,14 @@ class SamplesFromImageDataset(RangeImagesDataset):
 
         # Pre-compute the query laser directions of output range samples
         if nusc:
+            H = self.lidar_out['channels']
+            pixel_centers = -1.0 + (2.0 * np.arange(H) + 1.0) / H
+            v_dir = pixel_centers.astype(np.float32)
+            
+            # Horizontal is standard
             W = self.lidar_out['points_per_ring']
-            v_dir = np.copy(ELEV_DEG_PER_RING_NUCSENES_RAD)
             cc = np.arange(W)
-            h_dir = ((cc.astype(np.float32) + 0.5) / W) * (2*np.pi) - np.pi
+            h_dir = ((cc.astype(np.float32) + 0.5) / W) * 2.0 - 1.0
         else:
             v_dir = np.linspace(start=self.lidar_out['min_v'], stop=self.lidar_out['max_v'], num=self.lidar_out['channels'])
             h_dir = np.linspace(start=self.lidar_out['min_h'], stop=self.lidar_out['max_h'], num=self.lidar_out['points_per_ring'], endpoint=False)
@@ -45,17 +49,7 @@ class SamplesFromImageDataset(RangeImagesDataset):
             h_angles = np.append(h_angles, h_dir)
 
         self.queries = np.stack((v_angles, h_angles), axis=-1).astype(np.float32)
-        if nusc:
-            v_range = ELEV_DEG_PER_RING_NUCSENES_RAD.max() - ELEV_DEG_PER_RING_NUCSENES_RAD.min()
-            # 0-1 norm for elev angles
-            self.queries[:, 0] = (self.queries[:, 0] - ELEV_DEG_PER_RING_NUCSENES_RAD.min()) / v_range
-            # -pi, pi to 0-1 mapping for azimuth
-            self.queries[:, 1] += np.pi
-            self.queries[:, 1] /= (2.0 * np.pi)
-            # move both ranges to -1,1
-            self.queries *= 2.0
-            self.queries -= 1.0
-        else:
+        if not nusc:
             self.queries = normalization_queries(self.queries, self.lidar_in)
 
     def __getitem__(self, item):

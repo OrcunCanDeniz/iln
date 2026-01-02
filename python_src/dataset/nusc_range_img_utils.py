@@ -1,37 +1,11 @@
 
 import os
-import PIL
-from PIL import Image
-
-from torchvision import transforms
-from torch.utils.data import Dataset
-from torchvision.datasets import ImageFolder, DatasetFolder
-import torch
-
-import torch.utils.data as data
-import torch.nn.functional as F
-from pyquaternion import Quaternion
-import mmcv
-from mmdet3d.core.bbox.structures.lidar_box3d import LiDARInstance3DBoxes
-from PIL import Image
-
-from timm.data import create_transform
-from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
-from timm.data.dataset import ImageDataset
 import numpy as np
 
-import os
-import os.path
-import random, math
-from copy import deepcopy
+import math
 from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
-import numpy as np
-import torch
-from torchvision.datasets.vision import VisionDataset
 import pdb
-from pathlib import Path
-import quaternion  # pip install numpy-quaternion
 
 IMG_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.ppm', '.bmp', '.pgm', '.tif', '.tiff', '.webp', '.jpx')
 NPY_EXTENSIONS = ('.npy', '.rimg', '.bin')
@@ -79,7 +53,7 @@ def img_to_pcd_nuscenes(range_img,
 
     # Valid pixels
     R = range_img.astype(np.float32, copy=True)
-    if eval:
+    if eval and maximum_range != 1.0:
         R *= maximum_range # eval 
     rr = np.repeat(np.arange(H), W) # [000000,111111,222222,333333,444444,555555,666666,777777]
     cc = np.tile(np.arange(W), H) # [01234567,01234567,01234567,01234567,01234567,01234567,01234567,01234567]

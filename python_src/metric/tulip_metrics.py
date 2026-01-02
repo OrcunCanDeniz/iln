@@ -42,6 +42,53 @@ def px_to_xyz(px, p_range, cols): # px: (u, v) size = (H*W,2)
     z_sensor = z_lidar + lidar_to_sensor_z_offset
     return np.stack((x_sensor, y_sensor, z_sensor), axis=-1)
 
+def img_to_pcd_nuscenes_vectorized(range_img,
+                                   maximum_range: float = 100.0,
+                                   flip_vertical: bool = True,
+                                   eval: bool = True) -> np.ndarray:
+    """Vectorized implementation (batched or single image)"""
+    # Handle single image input
+    if range_img.ndim == 2:
+        range_img = range_img[np.newaxis, ...]
+    elif range_img.ndim == 3 and range_img.shape[2] == 1:
+        range_img = range_img[..., 0]
+    
+    N, H, W = range_img.shape
+    
+    # Denormalize if needed
+    R = range_img.astype(np.float32, copy=True)
+    if eval and maximum_range != 1.0:
+        R *= maximum_range
+    
+    # Create index grids (vectorized for all batches)
+    rr = np.repeat(np.arange(H), W)  # Shape: (H*W,)
+    cc = np.tile(np.arange(W), H)    # Shape: (H*W,)
+    
+    # Undo vertical flip if needed
+    row_idx = (H - 1 - rr) if flip_vertical else rr
+    
+    # Get elevation angles (same for all batches)
+    el = ELEV_DEG_PER_RING_NUCSENES_RAD[row_idx]  # Shape: (H*W,)
+    az = ((cc.astype(np.float32) + 0.5) / W) * (2 * np.pi) - np.pi  # Shape: (H*W,)
+    
+    # Extract range data using fancy indexing, just like original
+    # This uses rr and cc to index, broadcasting across batch dimension
+    r = R[:, rr, cc]  # Shape: (N, H*W)
+    
+    # Vectorized coordinate conversion
+    cos_el = np.cos(el)  # Shape: (H*W,)
+    sin_el = np.sin(el)  # Shape: (H*W,)
+    cos_az = np.cos(az)  # Shape: (H*W,)
+    sin_az = np.sin(az)  # Shape: (H*W,)
+    
+    # Broadcast to batch dimension: (N, 1) * (H*W,) -> (N, H*W)
+    x = r * cos_el[np.newaxis, :] * cos_az[np.newaxis, :]
+    y = r * cos_el[np.newaxis, :] * sin_az[np.newaxis, :]
+    z = r * sin_el[np.newaxis, :]
+    
+    # Stack to shape (N, H*W, 3)
+    pc = np.stack([x, y, z], axis=2)
+    return pc.astype(np.float32)
 
 def img_to_pcd_nuscenes(range_img,
                         maximum_range: float = 100.0,

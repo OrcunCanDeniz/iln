@@ -1,10 +1,12 @@
 import argparse
 import os
 
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import pdb
 
 # Datasets
 from dataset.samples_from_image_dataset import SamplesFromImageDataset
@@ -18,7 +20,8 @@ from models.lsr_ras20.unet import UNet
 from models.model_utils import generate_model
 
 # Metric
-from metric.tulip_metrics import calculate_metrics, chamfer_distance, img_to_pcd_nuscenes, voxelize_point_cloud
+from metric.tulip_metrics import calculate_metrics, chamfer_distance, img_to_pcd_nuscenes, \
+                                    voxelize_point_cloud, img_to_pcd_nuscenes_vectorized
 NUSC_OUT_W = 1024
 NUSC_OUT_H = 32
 
@@ -35,6 +38,7 @@ def test_pixel_based_network():
         # output_ranges:        [N, H_out*W_out, 1]
         input_range_image, output_ranges = packed_batches[0].cuda(), packed_batches[2].cuda()
 
+        N, _, H_in, W_in = input_range_image.shape
         # Prediction: input_range_image [N, 1, H_in, W_in] --> pred_ranges: [N, H_out*W_out, 1]
         with torch.no_grad():
             # [-1 ~ 1] -> [ 0 ~ 1]
@@ -46,28 +50,30 @@ def test_pixel_based_network():
             pred_ranges -= 1.0
 
         # Evaluations
-        output_ranges = denormalization_ranges(output_ranges)  # [N * H_out * W_out]
-        pred_ranges = denormalization_ranges(pred_ranges)  # [N * H_out * W_out]
+        output_ranges = denormalization_ranges(output_ranges, test_dataset.lidar_out['norm_r'])  # [N * H_out * W_out]
+        pred_ranges = denormalization_ranges(pred_ranges, test_dataset.lidar_out['norm_r'])  # [N * H_out * W_out]
         pred_ranges[pred_ranges < 0.] = 0.
         pred_ranges[pred_ranges > test_dataset.lidar_out['norm_r']] = test_dataset.lidar_out['norm_r']
 
-        pred_ranges = pred_ranges.reshape(N, 1, NUSC_OUT_H, NUSC_OUT_W).cpu().numpy()
-        output_ranges = output_ranges.reshape(N, 1, NUSC_OUT_H, NUSC_OUT_W).cpu().numpy()
+        mae_map = torch.abs(pred_ranges - output_ranges)
+        mae_map = torch.mean(mae_map, dim = 1).squeeze()
+        sample_maes = mae_map.cpu().numpy()
 
-        input_cpu = input_range_image.cpu().numpy()[:N]
+        pred_ranges = pred_ranges.reshape(N, 1, NUSC_OUT_H, NUSC_OUT_W)
+        pred_ranges[:, :, low_res_index, :] = input_range_image
+        pred_ranges_cpu = pred_ranges.flip(2).squeeze().cpu().numpy()[:N]
+        
+        output_ranges = output_ranges.reshape(N, 1, NUSC_OUT_H, NUSC_OUT_W)
+        output_ranges_cpu = output_ranges.flip(2).squeeze().cpu().numpy()[:N]
 
-        for i in range(input_cpu.shape[0]):
-            pred_single = pred_ranges[i]
-            output_single = output_ranges[i]
-            # compute mae
-            loss_map = np.abs(pred_single - output_single)
-            mae = np.mean(loss_map)
-            maes.append(mae)
+        pcd_pred_batch = img_to_pcd_nuscenes_vectorized(pred_ranges_cpu, maximum_range = 1.0) # rmax = 1 since it range images are already denormalized
+        pcd_gt_batch = img_to_pcd_nuscenes_vectorized(output_ranges_cpu, maximum_range = 1.0)
 
-            pred_single[:, low_res_index, :] = input_cpu[i, ...]
-            
-            pcd_pred = img_to_pcd_nuscenes(pred_single, maximum_range = rmax)
-            pcd_gt = img_to_pcd_nuscenes(output_single, maximum_range = rmax)
+        for i in range(N):
+            pcd_pred = pcd_pred_batch[i]
+            pcd_gt = pcd_gt_batch[i]
+            # get mae for sample i from batch maes
+            maes.append(sample_maes[i])
 
             pcd_all = np.vstack((pcd_pred, pcd_gt))
             min_coord = np.min(pcd_all, axis=0)
@@ -122,29 +128,30 @@ def test_implicit_network(pred_batch=4):
                 pred_ranges = model(input_range_image, input_queries)
 
         # Evaluations
-        output_ranges = denormalization_ranges(output_ranges)   # [N * H_out * W_out]
-        pred_ranges = denormalization_ranges(pred_ranges)       # [N * H_out * W_out]
+        output_ranges = denormalization_ranges(output_ranges, test_dataset.lidar_out['norm_r'])  # [N * H_out * W_out]
+        pred_ranges = denormalization_ranges(pred_ranges, test_dataset.lidar_out['norm_r'])  # [N * H_out * W_out]
         pred_ranges[pred_ranges < 0.] = 0.
         pred_ranges[pred_ranges > test_dataset.lidar_out['norm_r']] = test_dataset.lidar_out['norm_r']
 
-        pred_ranges = pred_ranges.reshape(N, 1, NUSC_OUT_H, NUSC_OUT_W).cpu().numpy()
-        output_ranges = output_ranges.reshape(N, 1, NUSC_OUT_H, NUSC_OUT_W).cpu().numpy()
+        mae_map = torch.abs(pred_ranges - output_ranges)
+        mae_map = torch.mean(mae_map, dim = 1).squeeze()
+        sample_maes = mae_map.cpu().numpy()
 
-        input_cpu = input_range_image.cpu().numpy()[:N]
+        pred_ranges = pred_ranges.reshape(N, 1, NUSC_OUT_H, NUSC_OUT_W)
+        pred_ranges[:, :, low_res_index, :] = input_range_image
+        pred_ranges_cpu = pred_ranges.flip(2).squeeze().cpu().numpy()[:N]
+        
+        output_ranges = output_ranges.reshape(N, 1, NUSC_OUT_H, NUSC_OUT_W)
+        output_ranges_cpu = output_ranges.flip(2).squeeze().cpu().numpy()[:N]
 
-        for i in range(input_cpu.shape[0]):
-            pred_single = pred_ranges[i]
-            output_single = output_ranges[i]
-            
-            # compute mae
-            loss_map = np.abs(pred_single - output_single)
-            mae = np.mean(loss_map)
-            maes.append(mae)
+        pcd_pred_batch = img_to_pcd_nuscenes_vectorized(pred_ranges_cpu, maximum_range = 1.0) # rmax = 1 since it range images are already denormalized
+        pcd_gt_batch = img_to_pcd_nuscenes_vectorized(output_ranges_cpu, maximum_range = 1.0)
 
-            pred_single[:, low_res_index, :] = input_cpu[i, ...]
-            
-            pcd_pred = img_to_pcd_nuscenes(pred_single, maximum_range = rmax)
-            pcd_gt = img_to_pcd_nuscenes(output_single, maximum_range = rmax)
+        for i in range(N):
+            pcd_pred = pcd_pred_batch[i]
+            pcd_gt = pcd_gt_batch[i]
+            # get mae for sample i from batch maes
+            maes.append(sample_maes[i])
 
             pcd_all = np.vstack((pcd_pred, pcd_gt))
             min_coord = np.min(pcd_all, axis=0)
@@ -209,7 +216,7 @@ if __name__ == '__main__':
                                'scene_ids': ['BLABLA'],
                                'res_in': '8_1024',
                                'res_out': '32_1024',
-                               'num_of_samples': 8192,
+                               'num_of_samples': 32768,
                                'nusc' : True}}
 
     # Generate dataset

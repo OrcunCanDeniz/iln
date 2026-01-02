@@ -119,7 +119,8 @@ class RangeImagesDataset(Dataset):
             else: 
                 output_range_image = npy_loader(input_range_image_filename)
                 input_range_image = output_range_image[self.low_res_index, :]
-
+                output_range_image = np.flip(output_range_image, axis=0).copy()
+                input_range_image = np.flip(input_range_image, axis=0).copy()
             # Crop the values out of the detection range
             input_range_image[input_range_image < 10e-10] = self.lidar_in['norm_r']
             input_range_image[input_range_image < self.lidar_in['min_r']] = 0.0
