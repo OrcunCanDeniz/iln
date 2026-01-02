@@ -1,6 +1,6 @@
 #!/bin/bash -l 
 #SBATCH --export=ALL
-#SBATCH --job-name=ILN_train               # your job name
+#SBATCH --job-name=LSR_train               # your job name
 #SBATCH --nodes=1                          # 1 node
 #SBATCH --ntasks-per-node=1                # one srun task per node
 #SBATCH --gres=gpu:a100:3               # 8 GPUs on that node
