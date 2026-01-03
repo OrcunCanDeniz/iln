@@ -61,6 +61,8 @@ class SamplesFromImageDataset(RangeImagesDataset):
         """
         # Read the normalized range image pair
         input_range_image, output_range_image = super().__getitem__(item)
+        output_range_image = np.flip(output_range_image, axis=0).copy()
+        input_range_image = np.flip(input_range_image, axis=0).copy()
 
         max_num_of_samples = output_range_image.shape[1] * output_range_image.shape[2]
         if 0 < self.num_of_samples < max_num_of_samples:

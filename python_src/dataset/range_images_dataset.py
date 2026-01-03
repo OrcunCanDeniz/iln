@@ -119,13 +119,9 @@ class RangeImagesDataset(Dataset):
             else: 
                 output_range_image = npy_loader(input_range_image_filename)
                 input_range_image = output_range_image[self.low_res_index, :]
-                output_range_image = np.flip(output_range_image, axis=0).copy()
-                input_range_image = np.flip(input_range_image, axis=0).copy()
             # Crop the values out of the detection range
-            input_range_image[input_range_image < 10e-10] = self.lidar_in['norm_r']
             input_range_image[input_range_image < self.lidar_in['min_r']] = 0.0
             input_range_image[input_range_image > self.lidar_in['max_r']] = self.lidar_in['norm_r']
-            output_range_image[output_range_image < 10e-10] = self.lidar_out['norm_r']
             output_range_image[output_range_image < self.lidar_out['min_r']] = 0.0
             output_range_image[output_range_image > self.lidar_out['max_r']] = self.lidar_out['norm_r']
 
@@ -149,3 +145,56 @@ class RangeImagesDataset(Dataset):
         output_range_image_filename = os.path.join(self.dataset_directory, map_id, self.res_out, str(scan_number) + '.rimg')
         item_idx = self.output_range_image_filenames.index(output_range_image_filename)
         return self[item_idx]
+
+
+if __name__ == "__main__":
+    import matplotlib.pyplot as plt
+
+    # Fill this dict with the arguments you want to pass into RangeImagesDataset.
+    dataset_kwargs = {
+        "directory": os.path.normpath(
+            os.path.join("/Users/orcun/cmtulip_bevformer_train/train_rv")
+        ),
+        "scene_ids": [],  # e.g., ["scene_0001"] when nusc is False
+        "res_in": "8_1024",
+        "res_out": "32_1024",
+        "memory_fetch": False,
+        "nusc": True,
+    }
+
+    sample_index = 0  # change to visualize a different item
+
+    dataset = RangeImagesDataset(**dataset_kwargs)
+
+    if len(dataset) == 0:
+        raise RuntimeError("Dataset is empty; check the directory, scene IDs, and resolutions.")
+
+    idx = sample_index % len(dataset)
+    input_img, output_img = dataset[idx]
+
+    # Denormalize for visualization.
+    input_vis = (input_img[0] + 1.0) * (dataset.lidar_in['norm_r'] / 2.0)
+    output_vis = (output_img[0] + 1.0) * (dataset.lidar_out['norm_r'] / 2.0)
+
+    upscale_factor = 32  # adjust if you want a different display size
+    input_up = np.kron(input_vis, np.ones((upscale_factor, upscale_factor)))
+    output_up = np.kron(output_vis, np.ones((upscale_factor, upscale_factor)))
+
+    print(
+        f"Visualizing sample {idx} with shapes input={input_vis.shape}->{input_up.shape}, "
+        f"output={output_vis.shape}->{output_up.shape}"
+    )
+
+    plt.figure(figsize=(8, 6))
+    plt.imshow(input_up, aspect='equal', cmap='viridis')
+    plt.title("Input range image (upsampled)")
+    plt.axis('off')
+
+    plt.figure(figsize=(8, 6))
+    plt.imshow(output_up, aspect='equal', cmap='viridis')
+    plt.title("Output range image (upsampled)")
+    plt.axis('off')
+
+    plt.show()
+
+
