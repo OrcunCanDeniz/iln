@@ -99,7 +99,6 @@ class OutConv(nn.Module):
         self.conv = nn.Sequential(
             ConvBlock(in_channels * 2, in_channels),
             nn.Conv2d(in_channels, out_channels, kernel_size=(1, 1)),
-            nn.ReLU(inplace=True)
         )
 
     def forward(self, x1, x2):
